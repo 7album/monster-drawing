@@ -1,0 +1,61 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  min-height: 100%;
+  background: #f7f4ef;
+  color: #8a7f76;
+  font-family: Georgia, "Times New Roman", serif;
+}
+
+#app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 18px 12px 22px;
+}
+
+#canvas-wrap canvas {
+  display: block;
+  background: transparent;
+}
+
+#bar {
+  display: flex;
+  gap: 10px;
+}
+
+#camera-btn {
+  appearance: none;
+  border: 1px solid #d8cfc4;
+  background: #fff;
+  color: #7a7168;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  padding: 8px 16px;
+  cursor: pointer;
+  border-radius: 999px;
+}
+
+#camera-btn.on {
+  background: #3d3a36;
+  color: #f7f4ef;
+  border-color: #3d3a36;
+}
+
+#hint {
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  opacity: 0.55;
+  user-select: none;
+}
