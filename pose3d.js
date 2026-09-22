@@ -132,27 +132,42 @@ function drawPoseMonster(k) {
   if (backArm.hand) shadePaw(backArm.hand.x, backArm.hand.y, armR * 0.85, claw, backArm.dir, 13);
   if (frontArm.hand) shadePaw(frontArm.hand.x, frontArm.hand.y, armR * 0.85, claw, frontArm.dir, 14);
 
-  const hx = nose.x;
-  const hy = nose.y;
+  const hx0 = nose.x;
+  const hy0 = nose.y;
   const headW = headR * 2;
   const headH = headR * 2.05;
-  shadeEars3d(g.ears || (g.type === "hopper" ? "bunny" : "round"), hx, hy, headW, headH);
-  shadeSphere(hx, hy, headR * 1.05, headR * 1.12, midc, { id: 2, hi, dabs: 64 });
+  const expr = faceExpr;
+  push();
+  translate(hx0, hy0);
+  if (expr) {
+    rotate(expr.roll * 0.85);
+    translate(expr.yaw * headR * 0.42, expr.pitch * headR * 0.5);
+  }
+  shadeEars3d(g.ears || (g.type === "hopper" ? "bunny" : "round"), 0, 0, headW, headH);
+  shadeSphere(0, 0, headR * 1.05, headR * 1.12, midc, { id: 2, hi, dabs: 64 });
   if (g.tuft) {
     randomSeed(seed + 95);
-    paintTuft(hx, hy - headR * 0.48, claw);
+    paintTuft(0, -headR * 0.48, claw);
   }
 
   const eyeS = headR * 0.32;
+  const liveL = expr ? { open: expr.eyeL, lookX: expr.lookX, lookY: expr.lookY, brow: expr.browL } : null;
+  const liveR = expr ? { open: expr.eyeR, lookX: expr.lookX, lookY: expr.lookY, brow: expr.browR } : null;
   if (isSingleEye(g.eyes)) {
-    paintEye(hx, hy - headR * 0.04, eyeS * 1.25, eyeS * 1.15, g.eyes);
+    paintEye(0, -headR * 0.04, eyeS * 1.25, eyeS * 1.15, g.eyes, liveL);
+    if (expr) paintLiveBrow(0, -headR * 0.42, eyeS * 1.4, expr.browL, 0);
   } else {
-    paintEye(hx - headR * 0.32, hy - headR * 0.04, eyeS, eyeS * 0.92, g.eyes);
-    paintEye(hx + headR * 0.32, hy - headR * 0.02, eyeS * 0.95, eyeS * 0.88, g.eyes);
+    paintEye(-headR * 0.32, -headR * 0.04, eyeS, eyeS * 0.92, g.eyes, liveL);
+    paintEye(headR * 0.32, -headR * 0.02, eyeS * 0.95, eyeS * 0.88, g.eyes, liveR);
+    if (expr) {
+      paintLiveBrow(-headR * 0.32, -headR * 0.42, eyeS * 1.1, expr.browL, -1);
+      paintLiveBrow(headR * 0.32, -headR * 0.4, eyeS * 1.05, expr.browR, 1);
+    }
   }
-  paintMouth(hx, hy + headR * 0.42, headR * 0.7, headR * 0.28, g.mouth);
+  paintMouth(0, headR * 0.42, headR * 0.7, headR * 0.28, g.mouth);
   if (g.whiskers) {
     randomSeed(seed + 110);
-    paintWhiskers(hx, hy + headR * 0.32, headR * 0.9);
+    paintWhiskers(0, headR * 0.32, headR * 0.9);
   }
+  pop();
 }

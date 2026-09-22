@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Animal Printing — 3D Models</title>
+    <link rel="stylesheet" href="style.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.1/examples/jsm/"
+        }
+      }
+    </script>
+  </head>
+  <body class="models-page">
+    <div id="app" class="models-app">
+      <div id="model-stage"></div>
+      <div id="bar">
+        <a class="pill" href="index.html">Generator</a>
+        <button id="prev-btn" type="button">Prev</button>
+        <button id="next-btn" type="button">Next</button>
+        <button id="save-btn" type="button">Save GLB</button>
+      </div>
+      <p id="hint">drag to orbit · scroll to zoom · arrows switch drawing</p>
+      <div id="model-thumbs"></div>
+      <p id="model-status">Building 3D from the drawings…</p>
+    </div>
+    <script type="module" src="models.js"></script>
+  </body>
+</html>
