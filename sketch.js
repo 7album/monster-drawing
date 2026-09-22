@@ -1,5 +1,6 @@
 let seed = 1;
 let genome;
+let appMode = "monster";
 let cameraMode = false;
 let video;
 let bodyPose;
@@ -105,6 +106,9 @@ function setup() {
   seed = floor(Math.random() * 1e9);
   const btn = document.getElementById("camera-btn");
   if (btn) btn.addEventListener("click", () => toggleCamera());
+  setupModeUi();
+  setupAvatarUi();
+  setModeUi();
 }
 
 function windowResized() {
@@ -130,8 +134,16 @@ function draw() {
   noiseSeed(seed);
   clear();
   if (cameraMode) {
-    if (!genome) genome = makeGenome();
-    drawCameraFrame();
+    if (appMode === "monster") {
+      if (!genome) genome = makeGenome();
+      drawCameraFrame();
+    } else {
+      drawAvatarFrame();
+    }
+    return;
+  }
+  if (appMode === "avatar") {
+    drawAvatarStill();
     return;
   }
   genome = makeGenome();
@@ -141,6 +153,7 @@ function draw() {
 function mousePressed() {
   if (mouseX < 0 || mouseY < 0 || mouseX > width || mouseY > height) return;
   if (cameraMode && showThumb && hitThumb(mouseX, mouseY)) return;
+  if (appMode === "avatar") return;
   summon();
 }
 
@@ -153,12 +166,25 @@ function keyPressed() {
     toggleCamera();
     return false;
   }
+  if (key === "m" || key === "M") {
+    toggleAppMode();
+    return false;
+  }
+  if (key === "u" || key === "U") {
+    if (appMode === "avatar") {
+      const input = document.getElementById("avatar-upload");
+      if (input) input.click();
+    }
+    return false;
+  }
   if (key === " " || key === "Enter") {
     summon();
     return false;
   }
   if (key === "s" || key === "S") {
-    saveCanvas("monster-" + seed, "png");
+    const name =
+      appMode === "avatar" ? "avatar-" + floor(millis()) : "monster-" + seed;
+    saveCanvas(name, "png");
     return false;
   }
   if (keyCode === ESCAPE && cameraMode) {
@@ -168,12 +194,50 @@ function keyPressed() {
 }
 
 function summon() {
+  if (appMode === "avatar") {
+    resetAvatarSmoothing();
+    if (avatarImage && avatarSourceKps) analyzeAvatarImage();
+    if (!cameraMode) redraw();
+    return;
+  }
   seed = floor(Math.random() * 1e9);
   randomSeed(seed);
   noiseSeed(seed);
   genome = makeGenome();
   poseSmooth = {};
   if (!cameraMode) redraw();
+}
+
+function setupModeUi() {
+  const monsterBtn = document.getElementById("mode-monster");
+  const avatarBtn = document.getElementById("mode-avatar");
+  if (monsterBtn) monsterBtn.addEventListener("click", () => setAppMode("monster"));
+  if (avatarBtn) avatarBtn.addEventListener("click", () => setAppMode("avatar"));
+}
+
+function toggleAppMode() {
+  setAppMode(appMode === "monster" ? "avatar" : "monster");
+}
+
+function setAppMode(mode) {
+  if (mode === appMode) return;
+  const wasCamera = cameraMode;
+  if (wasCamera) stopCamera();
+  appMode = mode;
+  setModeUi();
+  if (mode === "avatar") ensureFaceMesh();
+  if (wasCamera) startCamera();
+  else if (!cameraMode) redraw();
+}
+
+function setModeUi() {
+  const monsterBtn = document.getElementById("mode-monster");
+  const avatarBtn = document.getElementById("mode-avatar");
+  const uploadBtn = document.getElementById("upload-btn");
+  if (monsterBtn) monsterBtn.classList.toggle("on", appMode === "monster");
+  if (avatarBtn) avatarBtn.classList.toggle("on", appMode === "avatar");
+  if (uploadBtn) uploadBtn.hidden = appMode !== "avatar";
+  setCameraUi(cameraMode);
 }
 
 function setCameraUi(on) {
@@ -184,9 +248,15 @@ function setCameraUi(on) {
     btn.textContent = on ? "Exit camera" : "Camera";
   }
   if (hint) {
-    hint.textContent = on
-      ? "you are the monster · v preview · space new look · c exit · s save"
-      : "click / space to summon another · c camera · s save";
+    if (appMode === "avatar") {
+      hint.textContent = on
+        ? "image avatar · your face drives the mesh · v preview · c exit · s save · m monster"
+        : "image avatar · drop/upload PNG/JPG · c camera · u upload · s save · m monster";
+    } else {
+      hint.textContent = on
+        ? "monster · v preview · space new look · c exit · s save · m image avatar"
+        : "monster · click / space summon · c camera · s save · m image avatar";
+    }
   }
 }
 
@@ -207,8 +277,18 @@ function startCamera() {
     genome = makeGenome();
   }
   loop();
-  if (typeof ml5 === "undefined" || !ml5.bodyPose) {
+  if (typeof ml5 === "undefined") {
+    cameraError = "ML library failed to load";
+    cameraStarting = false;
+    return;
+  }
+  if (appMode === "monster" && !ml5.bodyPose) {
     cameraError = "Pose library failed to load";
+    cameraStarting = false;
+    return;
+  }
+  if (appMode === "avatar" && !ml5.faceMesh) {
+    cameraError = "Face mesh failed to load";
     cameraStarting = false;
     return;
   }
@@ -276,6 +356,36 @@ function startCamera() {
 
 function boot() {
   try {
+    if (appMode === "avatar") {
+      ensureFaceMesh((ok) => {
+        if (!cameraMode) return;
+        if (!ok) {
+          cameraError = "Could not load face model";
+          cameraStarting = false;
+          return;
+        }
+        startAvatarFaceDetect(video);
+        if (typeof ml5 !== "undefined" && ml5.bodyPose) {
+          if (bodyPose && bodyPose.detectStart) {
+            bodyPose.detectStart(video.elt || video, gotPoses);
+          } else {
+            bodyPose = ml5.bodyPose(
+              "MoveNet",
+              { modelType: "SINGLEPOSE_LIGHTNING", flipped: false },
+              () => {
+                if (cameraMode && bodyPose.detectStart) {
+                  bodyPose.detectStart(video.elt || video, gotPoses);
+                }
+              }
+            );
+          }
+        }
+        cameraReady = true;
+        cameraStarting = false;
+      });
+      return;
+    }
+    stopAvatarFaceDetect();
     if (bodyPose) {
       bodyPose.detectStart(video.elt || video, gotPoses);
       cameraReady = true;
@@ -292,7 +402,8 @@ function boot() {
       }
     );
   } catch (err) {
-    cameraError = "Could not start pose tracking";
+    cameraError =
+      appMode === "avatar" ? "Could not start face tracking" : "Could not start pose tracking";
     cameraStarting = false;
   }
 }
@@ -310,6 +421,7 @@ function stopCamera() {
       /* ignore */
     }
   }
+  stopAvatarFaceDetect();
   noLoop();
   redraw();
 }

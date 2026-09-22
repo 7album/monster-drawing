@@ -29,7 +29,50 @@ body {
 
 #bar {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
   gap: 10px;
+}
+
+#mode-switch {
+  display: flex;
+  border: 1px solid #d8cfc4;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.mode-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: #7a7168;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+
+.mode-btn.on {
+  background: #3d3a36;
+  color: #f7f4ef;
+}
+
+.secondary-btn {
+  appearance: none;
+  border: 1px solid #d8cfc4;
+  background: #fff;
+  color: #7a7168;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 8px 14px;
+  cursor: pointer;
+  border-radius: 999px;
 }
 
 #camera-btn {
