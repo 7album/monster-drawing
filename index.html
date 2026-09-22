@@ -12,10 +12,17 @@
     <div id="app">
       <div id="canvas-wrap"></div>
       <div id="bar">
+        <div id="mode-switch" role="group" aria-label="Display mode">
+          <button id="mode-monster" type="button" class="mode-btn on">Monster</button>
+          <button id="mode-avatar" type="button" class="mode-btn">Image avatar</button>
+        </div>
+        <button id="upload-btn" type="button" class="secondary-btn" hidden>Upload</button>
+        <input id="avatar-upload" type="file" accept="image/png,image/jpeg,image/jpg" hidden />
         <button id="camera-btn" type="button">Camera</button>
       </div>
-      <p id="hint">click / space to summon another · c camera · s save</p>
+      <p id="hint">click / space to summon another · c camera · s save · m mode</p>
     </div>
+    <script src="avatar.js"></script>
     <script src="sketch.js"></script>
     <script src="pose3d.js"></script>
   </body>
