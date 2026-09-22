@@ -506,20 +506,19 @@ function drawAvatarFrame() {
     return;
   }
 
+  if (!avatarSourceKps && cameraMode && avatarFaces.length) {
+    tryCalibrateAvatarFromCamera();
+  }
+
   if (!avatarSourceKps) {
     drawAvatarStaticImage();
-    if (cameraMode && avatarFaces.length) tryCalibrateAvatarFromCamera();
-    if (avatarSourceKps && cameraMode) {
-      /* fall through to warp below on next frame */
-    } else {
-      drawAvatarStatus(
-        avatarNeedsCalibration && cameraMode
-          ? "Look at the camera to rig the mesh to this art"
-          : avatarMessage || "Need a detectable face — or use camera to calibrate"
-      );
-      drawCameraThumb();
-      return;
-    }
+    drawAvatarStatus(
+      avatarNeedsCalibration && cameraMode
+        ? "Look at the camera to rig the mesh to this art"
+        : avatarMessage || "Press c to calibrate with your face"
+    );
+    drawCameraThumb();
+    return;
   }
 
   if (cameraError) {
@@ -546,12 +545,6 @@ function drawAvatarFrame() {
   }
 
   if (avatarNeedsCalibration) tryCalibrateAvatarFromCamera();
-  if (!avatarSourceKps) {
-    drawAvatarStaticImage();
-    drawAvatarStatus("Look straight at the camera…");
-    drawCameraThumb();
-    return;
-  }
 
   const rawLive = liveKpToCanvas(avatarFaces[0]);
   const aligned = alignLiveToSource(rawLive);

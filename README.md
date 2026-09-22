@@ -31,7 +31,7 @@ On load, the app automatically fetches **`Dunet&TinYan03.png`** at the repo root
 
 1. The image is prepared for detection: very tall portraits are **cropped from the top** (~upper 48% or up to ~1.05× width) so the face region is larger for the mesh, then scaled so the longest side is at most **1600px** for stable ml5 performance.
 2. Face mesh runs once on that working image to store landmark positions.
-3. With the camera on, live landmarks warp the same mesh (piecewise affine triangles via `faceMesh.getTriangles()`). Live face alignment uses inter-eye scaling; blinks and mouth motion follow your webcam.
+3. With the camera on, live landmarks warp the same mesh (piecewise affine triangles via `faceMesh.getTriangles()`). If the artwork is not a human photo (e.g. **`Dunet&TinYan03.png`**), mesh detection on the file may fail; the app then **calibrates from your webcam** by mapping your face mesh onto fixed eye positions on the art the first time you look at the camera.
 4. If your shoulders are visible, a simple lower-body layer shifts slightly with body pose (optional polish).
 
 If the default file is missing, a **generated placeholder** silhouette is shown until you upload.
