@@ -21,19 +21,20 @@ Open `http://localhost:8080` (or the port your server prints).
 | Mode | What you see |
 |------|----------------|
 | **Monster** | Click or press Space to generate a new creature. Press **C** for camera: your body pose drives a procedural monster (MoveNet via ml5). |
-| **Image avatar** | Upload or drag-drop a **PNG/JPG** (front-facing face or character). Press **C** to animate: ml5 **faceMesh** tracks your face and warps the image with a triangular mesh. |
+| **Image avatar** | Default art **`Dunet&TinYan03.png`** loads automatically; upload/drag to replace. Press **C** to animate with ml5 **faceMesh**. |
 
 Switch modes with the **Monster / Image avatar** buttons or **M**.
 
 ### Image avatar — how it works
 
-1. Upload an image (**Upload** button, **U**, or drag onto the canvas).
-2. The app runs face mesh detection once on the image to lock landmark positions in the artwork.
-3. With the camera on, live face landmarks are aligned to your photo (scaled by eye distance) and each mesh triangle is drawn with a **piecewise affine warp** (same topology as ml5’s `faceMesh.getTriangles()`).
-4. Blink, mouth open, and head turn come from the live mesh — no Live2D Cubism SDK, just canvas texture mapping.
-5. If your shoulders are visible, a simple lower-body layer shifts slightly with body pose (optional polish).
+On load, the app automatically fetches **`Dunet&TinYan03.png`** at the repo root (Shepherd’s artwork). You can replace it anytime via **Upload**, **U**, or drag-and-drop.
 
-If no image is loaded, a **generated placeholder** silhouette is shown (no bundled character art).
+1. The image is prepared for detection: very tall portraits are **cropped from the top** (~upper 48% or up to ~1.05× width) so the face region is larger for the mesh, then scaled so the longest side is at most **1600px** for stable ml5 performance.
+2. Face mesh runs once on that working image to store landmark positions.
+3. With the camera on, live landmarks warp the same mesh (piecewise affine triangles via `faceMesh.getTriangles()`). Live face alignment uses inter-eye scaling; blinks and mouth motion follow your webcam.
+4. If your shoulders are visible, a simple lower-body layer shifts slightly with body pose (optional polish).
+
+If the default file is missing, a **generated placeholder** silhouette is shown until you upload.
 
 ### Camera & permissions
 
@@ -49,6 +50,7 @@ If no image is loaded, a **generated placeholder** silhouette is shown (no bundl
 - `sketch.js` — monster generator, camera/pose, mode switching
 - `pose3d.js` — shaded 3D-style pose monster (camera)
 - `avatar.js` — image upload, face mesh warp, avatar UI
+- `Dunet&TinYan03.png` — default Image Avatar source artwork
 - `style.css` — layout and controls
 
 ## Tips for best avatars

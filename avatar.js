@@ -1,6 +1,7 @@
 /* Image Avatar mode — Live2D-like mesh warp driven by ml5.faceMesh */
 
 let avatarImage = null;
+let avatarSourceRaw = null;
 let avatarSourceKps = null;
 let avatarFaces = [];
 let avatarTriangles = null;
@@ -9,9 +10,15 @@ let faceMeshReady = false;
 let faceMeshStarting = false;
 let avatarMessage = "";
 let avatarAnalyzing = false;
+let avatarDefaultLoading = false;
 let avatarDragOver = false;
 let avatarFaceSmooth = null;
 let avatarDisplay = { x: 0, y: 0, w: 0, h: 0, scale: 1 };
+
+const DEFAULT_AVATAR_FILE = "Dunet&TinYan03.png";
+const DEFAULT_AVATAR_URL = "Dunet%26TinYan03.png";
+const AVATAR_MAX_EDGE = 1600;
+const AVATAR_PORTRAIT_RATIO = 1.28;
 
 const FACE_MESH_OPTS = { maxFaces: 1, refineLandmarks: true, flipHorizontal: false };
 
@@ -69,6 +76,73 @@ function gotAvatarFaces(results) {
   avatarFaces = results || [];
 }
 
+/**
+ * Tall portraits: crop from the top so the face region is larger in pixel space for mesh detection.
+ * Then downscale so the longest edge is at most AVATAR_MAX_EDGE (keeps quality, saves memory).
+ */
+function prepareAvatarWorkingImage(src, opts = {}) {
+  if (!src || !src.width) return src;
+  const cropPortrait = opts.cropPortrait !== false;
+  let sx = 0;
+  let sy = 0;
+  let cw = src.width;
+  let ch = src.height;
+
+  if (cropPortrait && ch / cw > AVATAR_PORTRAIT_RATIO) {
+    ch = min(ch, max(cw * 1.05, ch * 0.48));
+    sy = 0;
+  }
+
+  let dw = cw;
+  let dh = ch;
+  const long = max(dw, dh);
+  if (long > AVATAR_MAX_EDGE) {
+    const s = AVATAR_MAX_EDGE / long;
+    dw = floor(cw * s);
+    dh = floor(ch * s);
+  } else {
+    dw = floor(dw);
+    dh = floor(dh);
+  }
+
+  const g = createGraphics(dw, dh);
+  g.image(src, 0, 0, dw, dh, sx, sy, cw, ch);
+  return g.get();
+}
+
+function prepareAvatarScaledOnly(src) {
+  return prepareAvatarWorkingImage(src, { cropPortrait: false });
+}
+
+function setAvatarFromSourceImage(src) {
+  if (!src || !src.width) return;
+  avatarSourceRaw = src;
+  avatarImage = prepareAvatarWorkingImage(src);
+  avatarSourceKps = null;
+  avatarMessage = "";
+  resetAvatarSmoothing();
+  layoutAvatarDisplay();
+  analyzeAvatarImage();
+  if (!cameraMode) redraw();
+}
+
+function loadDefaultAvatarAsset() {
+  avatarDefaultLoading = true;
+  avatarMessage = "Loading artwork…";
+  loadImage(
+    DEFAULT_AVATAR_URL,
+    (img) => {
+      avatarDefaultLoading = false;
+      setAvatarFromSourceImage(img);
+    },
+    () => {
+      avatarDefaultLoading = false;
+      avatarMessage = "Default artwork not found (" + DEFAULT_AVATAR_FILE + ")";
+      if (!cameraMode) redraw();
+    }
+  );
+}
+
 function acceptAvatarFile(file) {
   if (!file || !file.type || !file.type.startsWith("image/")) {
     avatarMessage = "Use a PNG or JPG image";
@@ -78,20 +152,19 @@ function acceptAvatarFile(file) {
   reader.onload = () => {
     loadImage(
       reader.result,
-      (img) => {
-        avatarImage = img;
-        avatarSourceKps = null;
-        avatarMessage = "";
-        resetAvatarSmoothing();
-        analyzeAvatarImage();
-        if (!cameraMode) redraw();
-      },
+      (img) => setAvatarFromSourceImage(img),
       () => {
         avatarMessage = "Could not read that image";
       }
     );
   };
   reader.readAsDataURL(file);
+}
+
+function runFaceDetectOnImage(img, onDone) {
+  faceMeshModel.detect(img, (faces) => {
+    onDone(faces && faces.length && faces[0].keypoints ? faces[0].keypoints : null);
+  });
 }
 
 function analyzeAvatarImage() {
@@ -103,18 +176,38 @@ function analyzeAvatarImage() {
       avatarAnalyzing = false;
       return;
     }
-    faceMeshModel.detect(avatarImage, (faces) => {
-      avatarAnalyzing = false;
-      if (!faces || !faces.length || !faces[0].keypoints) {
-        avatarSourceKps = null;
-        avatarMessage = "No face found — try a clear front-facing photo";
+    runFaceDetectOnImage(avatarImage, (kps) => {
+      if (kps) {
+        avatarAnalyzing = false;
+        avatarSourceKps = cloneKeypoints(kps);
+        avatarMessage = "";
+        layoutAvatarDisplay();
         if (!cameraMode) redraw();
         return;
       }
-      avatarSourceKps = cloneKeypoints(faces[0].keypoints);
-      avatarMessage = "";
-      layoutAvatarDisplay();
-      if (!cameraMode) redraw();
+      const fallbackImg = avatarSourceRaw
+        ? prepareAvatarScaledOnly(avatarSourceRaw)
+        : null;
+      if (!fallbackImg) {
+        avatarAnalyzing = false;
+        avatarSourceKps = null;
+        avatarMessage = "No face found — try another photo or upload";
+        if (!cameraMode) redraw();
+        return;
+      }
+      runFaceDetectOnImage(fallbackImg, (kps2) => {
+        avatarAnalyzing = false;
+        if (kps2) {
+          avatarImage = fallbackImg;
+          avatarSourceKps = cloneKeypoints(kps2);
+          avatarMessage = "";
+        } else {
+          avatarSourceKps = null;
+          avatarMessage = "No face found — try a clear front-facing photo";
+        }
+        layoutAvatarDisplay();
+        if (!cameraMode) redraw();
+      });
     });
   });
 }
@@ -296,7 +389,7 @@ function drawAvatarPlaceholder() {
   text("Drop a PNG/JPG here or click Upload", cx, cy + r * 0.95);
   textSize(11);
   fill(122, 113, 104, 130);
-  text("Front-facing face or character works best", cx, cy + r * 1.18);
+  text("Default: " + DEFAULT_AVATAR_FILE, cx, cy + r * 1.18);
 }
 
 function drawAvatarStaticImage() {
@@ -451,6 +544,11 @@ function applySimpleBodyLayer() {
 }
 
 function drawAvatarStill() {
+  if (avatarDefaultLoading) {
+    drawAvatarPlaceholder();
+    drawAvatarStatus(avatarMessage || "Loading artwork…");
+    return;
+  }
   if (avatarMessage && !avatarImage) {
     drawAvatarPlaceholder();
     drawAvatarStatus(avatarMessage);
@@ -504,4 +602,7 @@ function setupAvatarUi() {
     const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
     if (f) acceptAvatarFile(f);
   });
+
+  loadDefaultAvatarAsset();
+  ensureFaceMesh();
 }
