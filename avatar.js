@@ -1,6 +1,7 @@
 /* Image Avatar mode — Live2D-like mesh warp driven by ml5.faceMesh */
 
 let avatarImage = null;
+let avatarSourceRaw = null;
 let avatarSourceKps = null;
 let avatarFaces = [];
 let avatarTriangles = null;
@@ -9,14 +10,69 @@ let faceMeshReady = false;
 let faceMeshStarting = false;
 let avatarMessage = "";
 let avatarAnalyzing = false;
+let avatarDefaultLoading = false;
 let avatarDragOver = false;
 let avatarFaceSmooth = null;
 let avatarDisplay = { x: 0, y: 0, w: 0, h: 0, scale: 1 };
+let avatarNeedsCalibration = false;
+let avatarCalibrated = false;
+
+const DEFAULT_AVATAR_FILE = "Dunet&TinYan03.png";
+const DEFAULT_AVATAR_URL = "Dunet%26TinYan03.png";
+const AVATAR_MAX_EDGE = 1600;
+const AVATAR_PORTRAIT_RATIO = 1.28;
 
 const FACE_MESH_OPTS = { maxFaces: 1, refineLandmarks: true, flipHorizontal: false };
 
 function resetAvatarSmoothing() {
   avatarFaceSmooth = null;
+  avatarCalibrated = false;
+}
+
+/** Map live video face mesh onto artwork using fixed eye slots (for non-human art). */
+function calibrateSourceKeypointsFromLive(liveFace) {
+  if (!avatarImage || !liveFace || !liveFace.keypoints) return null;
+  const kps = liveFace.keypoints;
+  const li = 33;
+  const ri = 263;
+  if (kps.length <= ri) return null;
+
+  const w = avatarImage.width;
+  const h = avatarImage.height;
+  const artL = { x: w * 0.34, y: h * 0.21 };
+  const artR = { x: w * 0.66, y: h * 0.21 };
+  const artDist = dist(artL.x, artL.y, artR.x, artR.y);
+  const liveDist = dist(kps[li].x, kps[li].y, kps[ri].x, kps[ri].y);
+  if (liveDist < 6) return null;
+
+  const scale = artDist / liveDist;
+  const artMid = { x: (artL.x + artR.x) / 2, y: (artL.y + artR.y) / 2 };
+  const liveMid = {
+    x: (kps[li].x + kps[ri].x) / 2,
+    y: (kps[li].y + kps[ri].y) / 2,
+  };
+
+  const out = new Array(kps.length);
+  for (let i = 0; i < kps.length; i++) {
+    out[i] = {
+      x: artMid.x + (kps[i].x - liveMid.x) * scale,
+      y: artMid.y + (kps[i].y - liveMid.y) * scale,
+      z: kps[i].z || 0,
+    };
+  }
+  return out;
+}
+
+function tryCalibrateAvatarFromCamera() {
+  if (avatarSourceKps || !avatarNeedsCalibration || !avatarFaces.length) return false;
+  const kps = calibrateSourceKeypointsFromLive(avatarFaces[0]);
+  if (!kps) return false;
+  avatarSourceKps = kps;
+  avatarNeedsCalibration = false;
+  avatarCalibrated = true;
+  avatarMessage = "";
+  resetAvatarSmoothing();
+  return true;
 }
 
 function ensureFaceMesh(onReady) {
@@ -69,6 +125,73 @@ function gotAvatarFaces(results) {
   avatarFaces = results || [];
 }
 
+/**
+ * Tall portraits: crop from the top so the face region is larger in pixel space for mesh detection.
+ * Then downscale so the longest edge is at most AVATAR_MAX_EDGE (keeps quality, saves memory).
+ */
+function prepareAvatarWorkingImage(src, opts = {}) {
+  if (!src || !src.width) return src;
+  const cropPortrait = opts.cropPortrait !== false;
+  let sx = 0;
+  let sy = 0;
+  let cw = src.width;
+  let ch = src.height;
+
+  if (cropPortrait && ch / cw > AVATAR_PORTRAIT_RATIO) {
+    ch = min(ch, max(cw * 1.05, ch * 0.48));
+    sy = 0;
+  }
+
+  let dw = cw;
+  let dh = ch;
+  const long = max(dw, dh);
+  if (long > AVATAR_MAX_EDGE) {
+    const s = AVATAR_MAX_EDGE / long;
+    dw = floor(cw * s);
+    dh = floor(ch * s);
+  } else {
+    dw = floor(dw);
+    dh = floor(dh);
+  }
+
+  const g = createGraphics(dw, dh);
+  g.image(src, 0, 0, dw, dh, sx, sy, cw, ch);
+  return g.get();
+}
+
+function prepareAvatarScaledOnly(src) {
+  return prepareAvatarWorkingImage(src, { cropPortrait: false });
+}
+
+function setAvatarFromSourceImage(src) {
+  if (!src || !src.width) return;
+  avatarSourceRaw = src;
+  avatarImage = prepareAvatarWorkingImage(src);
+  avatarSourceKps = null;
+  avatarMessage = "";
+  resetAvatarSmoothing();
+  layoutAvatarDisplay();
+  analyzeAvatarImage();
+  if (!cameraMode) redraw();
+}
+
+function loadDefaultAvatarAsset() {
+  avatarDefaultLoading = true;
+  avatarMessage = "Loading artwork…";
+  loadImage(
+    DEFAULT_AVATAR_URL,
+    (img) => {
+      avatarDefaultLoading = false;
+      setAvatarFromSourceImage(img);
+    },
+    () => {
+      avatarDefaultLoading = false;
+      avatarMessage = "Default artwork not found (" + DEFAULT_AVATAR_FILE + ")";
+      if (!cameraMode) redraw();
+    }
+  );
+}
+
 function acceptAvatarFile(file) {
   if (!file || !file.type || !file.type.startsWith("image/")) {
     avatarMessage = "Use a PNG or JPG image";
@@ -78,20 +201,19 @@ function acceptAvatarFile(file) {
   reader.onload = () => {
     loadImage(
       reader.result,
-      (img) => {
-        avatarImage = img;
-        avatarSourceKps = null;
-        avatarMessage = "";
-        resetAvatarSmoothing();
-        analyzeAvatarImage();
-        if (!cameraMode) redraw();
-      },
+      (img) => setAvatarFromSourceImage(img),
       () => {
         avatarMessage = "Could not read that image";
       }
     );
   };
   reader.readAsDataURL(file);
+}
+
+function runFaceDetectOnImage(img, onDone) {
+  faceMeshModel.detect(img, (faces) => {
+    onDone(faces && faces.length && faces[0].keypoints ? faces[0].keypoints : null);
+  });
 }
 
 function analyzeAvatarImage() {
@@ -103,18 +225,42 @@ function analyzeAvatarImage() {
       avatarAnalyzing = false;
       return;
     }
-    faceMeshModel.detect(avatarImage, (faces) => {
-      avatarAnalyzing = false;
-      if (!faces || !faces.length || !faces[0].keypoints) {
-        avatarSourceKps = null;
-        avatarMessage = "No face found — try a clear front-facing photo";
+    runFaceDetectOnImage(avatarImage, (kps) => {
+      if (kps) {
+        avatarAnalyzing = false;
+        avatarSourceKps = cloneKeypoints(kps);
+        avatarNeedsCalibration = false;
+        avatarCalibrated = false;
+        avatarMessage = "";
+        layoutAvatarDisplay();
         if (!cameraMode) redraw();
         return;
       }
-      avatarSourceKps = cloneKeypoints(faces[0].keypoints);
-      avatarMessage = "";
-      layoutAvatarDisplay();
-      if (!cameraMode) redraw();
+      const fallbackImg = avatarSourceRaw
+        ? prepareAvatarScaledOnly(avatarSourceRaw)
+        : null;
+      if (!fallbackImg) {
+        avatarAnalyzing = false;
+        avatarSourceKps = null;
+        avatarMessage = "No face found — try another photo or upload";
+        if (!cameraMode) redraw();
+        return;
+      }
+      runFaceDetectOnImage(fallbackImg, (kps2) => {
+        avatarAnalyzing = false;
+        if (kps2) {
+          avatarImage = fallbackImg;
+          avatarSourceKps = cloneKeypoints(kps2);
+          avatarNeedsCalibration = false;
+          avatarMessage = "";
+        } else {
+          avatarSourceKps = null;
+          avatarNeedsCalibration = true;
+          avatarMessage = "Use the camera to align your face to the artwork";
+        }
+        layoutAvatarDisplay();
+        if (!cameraMode) redraw();
+      });
     });
   });
 }
@@ -296,7 +442,7 @@ function drawAvatarPlaceholder() {
   text("Drop a PNG/JPG here or click Upload", cx, cy + r * 0.95);
   textSize(11);
   fill(122, 113, 104, 130);
-  text("Front-facing face or character works best", cx, cy + r * 1.18);
+  text("Default: " + DEFAULT_AVATAR_FILE, cx, cy + r * 1.18);
 }
 
 function drawAvatarStaticImage() {
@@ -360,9 +506,17 @@ function drawAvatarFrame() {
     return;
   }
 
+  if (!avatarSourceKps && cameraMode && avatarFaces.length) {
+    tryCalibrateAvatarFromCamera();
+  }
+
   if (!avatarSourceKps) {
     drawAvatarStaticImage();
-    drawAvatarStatus(avatarMessage || "Need a detectable face in the image");
+    drawAvatarStatus(
+      avatarNeedsCalibration && cameraMode
+        ? "Look at the camera to rig the mesh to this art"
+        : avatarMessage || "Press c to calibrate with your face"
+    );
     drawCameraThumb();
     return;
   }
@@ -383,10 +537,14 @@ function drawAvatarFrame() {
 
   if (!avatarFaces.length || !avatarFaces[0].keypoints) {
     drawAvatarStaticImage();
-    drawAvatarStatus("Look at the camera to animate");
+    drawAvatarStatus(
+      avatarNeedsCalibration ? "Look at the camera to rig the mesh" : "Look at the camera to animate"
+    );
     drawCameraThumb();
     return;
   }
+
+  if (avatarNeedsCalibration) tryCalibrateAvatarFromCamera();
 
   const rawLive = liveKpToCanvas(avatarFaces[0]);
   const aligned = alignLiveToSource(rawLive);
@@ -451,6 +609,11 @@ function applySimpleBodyLayer() {
 }
 
 function drawAvatarStill() {
+  if (avatarDefaultLoading) {
+    drawAvatarPlaceholder();
+    drawAvatarStatus(avatarMessage || "Loading artwork…");
+    return;
+  }
   if (avatarMessage && !avatarImage) {
     drawAvatarPlaceholder();
     drawAvatarStatus(avatarMessage);
@@ -463,7 +626,9 @@ function drawAvatarStill() {
   }
   drawAvatarStaticImage();
   if (avatarMessage) drawAvatarStatus(avatarMessage);
-  else if (!avatarSourceKps) drawAvatarStatus("Face not detected — try another photo");
+  else if (!avatarSourceKps && avatarNeedsCalibration)
+    drawAvatarStatus("Press c — camera calibrates mesh to " + DEFAULT_AVATAR_FILE);
+  else if (!avatarSourceKps) drawAvatarStatus("Face not detected — try upload or camera calibrate");
   else drawAvatarStatus("Press c to animate with your webcam");
 }
 
@@ -504,4 +669,7 @@ function setupAvatarUi() {
     const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
     if (f) acceptAvatarFile(f);
   });
+
+  loadDefaultAvatarAsset();
+  ensureFaceMesh();
 }
